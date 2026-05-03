@@ -15,8 +15,21 @@ public class User {
     @jakarta.validation.constraints.NotBlank(message = "用户名不能为空")
     private String username;
 
-    /** 密码（明文存储，毕设阶段） */
+    /** 密码  */
     private String password;
+
+    /**
+     * 用户角色
+     * student - 学生
+     * admin   - 管理员
+     */
+    private String role;
+
+    /** 头像 URL（可选） */
+    private String avatar;
+
+    /** 联系方式，手机号 */
+    private String contact;
 
     /**
      * 用户状态

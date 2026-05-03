@@ -1,8 +1,10 @@
 package com.example.studyroom.controller;
 
 import com.example.studyroom.dto.ReservationDTO;
+import com.example.studyroom.dto.UpdateReservationDTO;
 import com.example.studyroom.po.Reservation;
 import com.example.studyroom.service.ReservationService;
+import com.example.studyroom.vo.ReservationVO;
 import com.example.studyroom.vo.Result;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,10 +17,10 @@ import java.util.List;
  * 基础路径：/reservations
  *
  * 状态流转模型：
- * 1. 预约: POST /reservations -> reservation:reserved, seat:reserved
- * 2. 签到: PUT /{id}/checkin -> seat:occupied
- * 3. 签退/完成: PUT /{id}/checkout 或 /{id}/complete -> reservation:completed,
- * seat:available
+ * 1. 预约: POST /reservations  -> reservation:reserved, seat:reserved
+ * 2. 签到: PUT /{id}/checkin   -> reservation:occupied, seat:occupied
+ * 3. 签退: PUT /{id}/checkout  -> reservation:completed, seat:available
+ * 4. 取消: PUT /{id}/cancel    -> reservation:cancelled, seat:available
  */
 @RestController
 @RequestMapping("/reservations")
@@ -28,46 +30,30 @@ public class ReservationController {
     private ReservationService reservationService;
 
     /**
-     * 查询预约列表
+     * 查询预约列表（含位置信息）
+     * GET /reservations?userId=&seatId=
      */
-    /*
-     * @GetMapping
-     * public Result<List<Reservation>> getReservations(
-     * 
-     * @RequestParam(required = false) Integer userId,
-     * 
-     * @RequestParam(required = false) Integer seatId) {
-     * 
-     * if (userId != null) {
-     * return Result.success(reservationService.getReservationsByUserId(userId));
-     * }
-     * if (seatId != null) {
-     * return Result.success(reservationService.getReservationsBySeatId(seatId));
-     * }
-     * return Result.success(reservationService.getAllReservations());
-     * }
-     */
-
     @GetMapping
-    public Result<List<Reservation>> getReservations(
+    public Result<List<ReservationVO>> getReservations(
             @RequestParam(value = "userId", required = false) Integer userId,
             @RequestParam(value = "seatId", required = false) Integer seatId) {
 
         if (userId != null) {
-            return Result.success(reservationService.getReservationsByUserId(userId));
+            return Result.success(reservationService.getReservationVOsByUserId(userId));
         }
         if (seatId != null) {
-            return Result.success(reservationService.getReservationsBySeatId(seatId));
+            return Result.success(reservationService.getReservationVOsBySeatId(seatId));
         }
-        return Result.success(reservationService.getAllReservations());
+        return Result.success(reservationService.getAllReservationVOs());
     }
 
     /**
-     * 查询单条详情
+     * 查询预约详情（含位置信息）
+     * GET /reservations/{id}
      */
     @GetMapping("/{id}")
-    public Result<Reservation> getReservationById(@PathVariable("id") Integer id) {
-        return Result.success(reservationService.getReservationById(id));
+    public Result<ReservationVO> getReservationById(@PathVariable("id") Integer id) {
+        return Result.success(reservationService.getReservationVOById(id));
     }
 
     /**
@@ -82,6 +68,15 @@ public class ReservationController {
         reservation.setStartTime(reservationDTO.getStartTime());
         reservation.setEndTime(reservationDTO.getEndTime());
         return Result.success(reservationService.createReservation(reservation));
+    }
+
+    /**
+     * 修改预约（座位 / 时间）
+     * PUT /reservations/{id}
+     */
+    @PutMapping("/{id}")
+    public Result<Reservation> updateReservation(@PathVariable("id") Integer id, @RequestBody @Valid com.example.studyroom.dto.UpdateReservationDTO dto) {
+        return Result.success(reservationService.updateReservation(id, dto.getSeatId(), dto.getStartTime(), dto.getEndTime()));
     }
 
     /**

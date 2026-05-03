@@ -25,4 +25,7 @@ public class Seat {
      * disabled - 不可用
      */
     private String status;
+
+    /** 是否启用摄像头（1=启用，0=关闭） */
+    private Integer cameraEnabled;
 }

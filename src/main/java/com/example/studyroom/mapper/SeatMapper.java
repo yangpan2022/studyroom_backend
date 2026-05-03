@@ -11,21 +11,24 @@ import java.util.List;
 @Mapper
 public interface SeatMapper {
 
-    @Select("SELECT * FROM seat")
+    @Select("SELECT seat_id AS seatId, room_id AS roomId, seat_number AS seatNumber, status AS status, camera_enabled AS cameraEnabled FROM seat")
     List<Seat> findAll();
 
-    @Select("SELECT * FROM seat WHERE seat_id = #{seatId}")
+    @Select("SELECT seat_id AS seatId, room_id AS roomId, seat_number AS seatNumber, status AS status, camera_enabled AS cameraEnabled FROM seat WHERE seat_id = #{seatId}")
     Seat findById(Integer seatId);
 
     /** 根据自习室 ID 查询所有座位 */
-    @Select("SELECT * FROM seat WHERE room_id = #{roomId}")
+    @Select("SELECT seat_id AS seatId, room_id AS roomId, seat_number AS seatNumber, status AS status, camera_enabled AS cameraEnabled FROM seat WHERE room_id = #{roomId}")
     List<Seat> findByRoomId(Integer roomId);
 
-    @Insert("INSERT INTO seat(room_id, seat_number, status) VALUES(#{roomId}, #{seatNumber}, #{status})")
+    @Select("SELECT COUNT(1) FROM seat WHERE room_id = #{roomId}")
+    int countByRoomId(Integer roomId);
+
+    @Insert("INSERT INTO seat(room_id, seat_number, status, camera_enabled) VALUES(#{roomId}, #{seatNumber}, #{status}, #{cameraEnabled})")
     @Options(useGeneratedKeys = true, keyProperty = "seatId")
     int insert(Seat seat);
 
-    @Update("UPDATE seat SET room_id=#{roomId}, seat_number=#{seatNumber}, status=#{status} WHERE seat_id=#{seatId}")
+    @Update("UPDATE seat SET room_id=#{roomId}, seat_number=#{seatNumber}, status=#{status}, camera_enabled=#{cameraEnabled} WHERE seat_id=#{seatId}")
     int update(Seat seat);
 
     /** 仅更新座位状态（AI 识别模块和预约模块频繁调用） */

@@ -31,7 +31,7 @@ import java.util.List;
 public class BehaviorDetectionServiceImpl implements BehaviorDetectionService {
 
     /** 置信度阈值，低于此值视为误报不发通知 */
-    private static final BigDecimal CONFIDENCE_THRESHOLD = new BigDecimal("0.80");
+    private static final BigDecimal CONFIDENCE_THRESHOLD = new BigDecimal("0.60");
 
     @Autowired
     private BehaviorDetectionMapper behaviorDetectionMapper;
@@ -100,7 +100,7 @@ public class BehaviorDetectionServiceImpl implements BehaviorDetectionService {
             notificationService.send(
                     activeReservation.getUserId(),
                     SystemConstants.NotificationType.STUDY_WARNING,
-                    "检测到您可能正在使用手机，请注意专注学习");
+                    "检测到您可能正在使用手机，建议保持专注学习。");
         }
 
         return detection;

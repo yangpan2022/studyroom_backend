@@ -11,17 +11,24 @@ import java.util.List;
 @Mapper
 public interface StudyRoomMapper {
 
-    @Select("SELECT * FROM study_room")
+    @Select("SELECT room_id AS roomId, room_name AS roomName, location, capacity, status, " +
+            "video_url AS videoUrl, video_type AS videoType " +
+            "FROM study_room")
     List<StudyRoom> findAll();
 
-    @Select("SELECT * FROM study_room WHERE room_id = #{roomId}")
+    @Select("SELECT room_id AS roomId, room_name AS roomName, location, capacity, status, " +
+            "video_url AS videoUrl, video_type AS videoType " +
+            "FROM study_room WHERE room_id = #{roomId}")
     StudyRoom findById(Integer roomId);
 
-    @Insert("INSERT INTO study_room(room_name, capacity, status) VALUES(#{roomName}, #{capacity}, #{status})")
+    @Insert("INSERT INTO study_room(room_name, location, capacity, status, video_url, video_type) " +
+            "VALUES(#{roomName}, #{location}, #{capacity}, #{status}, #{videoUrl}, #{videoType})")
     @Options(useGeneratedKeys = true, keyProperty = "roomId")
     int insert(StudyRoom room);
 
-    @Update("UPDATE study_room SET room_name=#{roomName}, capacity=#{capacity}, status=#{status} WHERE room_id=#{roomId}")
+    @Update("UPDATE study_room SET room_name=#{roomName}, location=#{location}, capacity=#{capacity}, " +
+            "status=#{status}, video_url=#{videoUrl}, video_type=#{videoType} " +
+            "WHERE room_id=#{roomId}")
     int update(StudyRoom room);
 
     @Delete("DELETE FROM study_room WHERE room_id = #{roomId}")

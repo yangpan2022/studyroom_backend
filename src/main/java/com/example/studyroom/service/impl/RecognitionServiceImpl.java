@@ -5,11 +5,13 @@ import com.example.studyroom.mapper.NotificationMapper;
 import com.example.studyroom.mapper.RecognitionRecordMapper;
 import com.example.studyroom.mapper.ReservationMapper;
 import com.example.studyroom.mapper.SeatMapper;
+import com.example.studyroom.po.Notification;
 import com.example.studyroom.po.RecognitionRecord;
 import com.example.studyroom.po.Reservation;
 import com.example.studyroom.po.Seat;
 import com.example.studyroom.service.NotificationService;
 import com.example.studyroom.service.RecognitionService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +34,7 @@ import java.util.List;
  * 2. 5 分钟内同用户不重复发送 seat_conflict_warning
  * 3. 发送通知：seat_conflict_warning
  */
+@Slf4j
 @Service
 public class RecognitionServiceImpl implements RecognitionService {
 
@@ -58,12 +61,29 @@ public class RecognitionServiceImpl implements RecognitionService {
     public RecognitionRecord uploadRecord(RecognitionRecord record) {
         // 1. 保存识别记录
         recognitionRecordMapper.insert(record);
+        log.info("[Recognition] 记录入库 seatId={}, occupied={}, confidence={}",
+                record.getSeatId(), record.getOccupied(), record.getConfidence());
 
         // 2. occupied=false：自动释放逻辑（原有逻辑不变）
         if (Boolean.FALSE.equals(record.getOccupied())) {
             Seat seat = seatMapper.findById(record.getSeatId());
 
             if (seat != null && SystemConstants.SeatStatus.OCCUPIED.equals(seat.getStatus())) {
+
+                // 引入阈值控制：查询最近 5 条记录
+                List<RecognitionRecord> recentRecords = recognitionRecordMapper.findRecentRecordsByCount(record.getSeatId(), 5);
+                boolean allFalse = true;
+                for (RecognitionRecord r : recentRecords) {
+                    if (Boolean.TRUE.equals(r.getOccupied())) {
+                        allFalse = false;
+                        break;
+                    }
+                }
+
+                if (!allFalse) {
+                    log.info("[Recognition] seatId={} 离座缓冲：最近 5 条记录中存在有人判定，暂不释放座位", record.getSeatId());
+                    return record;
+                }
 
                 // 2a. 释放座位 -> available
                 seatMapper.updateStatus(record.getSeatId(), SystemConstants.SeatStatus.AVAILABLE);
@@ -75,44 +95,64 @@ public class RecognitionServiceImpl implements RecognitionService {
                             activeReservation.getReservationId(),
                             SystemConstants.ReservationStatus.COMPLETED);
 
+                    String seatNumber = seat.getSeatNumber();
                     // 2c. 通知用户：座位自动释放
                     notificationService.send(
                             activeReservation.getUserId(),
                             SystemConstants.NotificationType.SEAT_AUTO_RELEASED,
-                            "系统检测到座位已无人使用，座位（ID：" + record.getSeatId() + "）已自动释放，预约已完成");
+                            "系统检测到 " + seatNumber + " 号座位已无人使用，已自动释放该座位并完成预约。");
                 }
             }
             return record;
         }
 
-        // 3. occupied=true：异常占用检测
-        // 该场景处于 "AI 检测到有人，但预约状态仍是 reserved（未签到）"
+        // 3. occupied=true：异常占用检测（含完整诊断日志）
         if (Boolean.TRUE.equals(record.getOccupied())) {
-            // 3a. 查询当前时间窗口内是否存在 reserved 预约
+            log.info("[Recognition] ── occupied=true 分支 ── seatId={}", record.getSeatId());
+
+            // 3a. 查询当前有效预约
             Reservation reservation = reservationMapper.findActiveReservationBySeatId(record.getSeatId());
             if (reservation == null) {
-                // 无有效预约，正常情况（未预约直接坐），无需处理
+                log.warn("[Recognition] ⚠ findActiveReservationBySeatId({}) = null"
+                        + " → 不发通知。排查：① status IN ('reserved','occupied')"
+                        + " ② NOW() 在 start_time~end_time 之间 ③ 数据库时区",
+                        record.getSeatId());
                 return record;
             }
+            log.info("[Recognition] 找到预约 reservationId={}, userId={}, status={}, startTime={}, endTime={}",
+                    reservation.getReservationId(), reservation.getUserId(), reservation.getStatus(),
+                    reservation.getStartTime(), reservation.getEndTime());
 
-            // 3b. 缓冲期判断：预约开始后 5 分钟内不发送，防止误判"用户刚到还没签到"
+            // 3b. 缓冲期判断
+            LocalDateTime now = LocalDateTime.now();
             LocalDateTime graceDeadline = reservation.getStartTime().plusMinutes(CHECKIN_GRACE_MINUTES);
-            if (LocalDateTime.now().isBefore(graceDeadline)) {
-                // 还在缓冲期内，暂不通知
+            boolean inGrace = now.isBefore(graceDeadline);
+            log.info("[Recognition] 时间诊断: now={}, graceDeadline={}, inGracePeriod={}",
+                    now, graceDeadline, inGrace);
+            if (inGrace) {
+                log.warn("[Recognition] ⚠ 仍在 {}min 缓冲期内 → 跳出", CHECKIN_GRACE_MINUTES);
                 return record;
             }
 
-            // 3c. 防重复通知：5 分钟内同用户已发过 seat_conflict_warning 则跳过
-            // 仅用 userId + type + 时间窗口判断，不解析 message 文本，安全可靠
-            if (notificationMapper.findRecentConflictWarning(reservation.getUserId()) != null) {
+            // 3c. 防重复
+            Notification recent = notificationMapper.findRecentConflictWarning(reservation.getUserId());
+            log.info("[Recognition] findRecentConflictWarning(userId={}) = {}",
+                    reservation.getUserId(),
+                    recent == null ? "null（可发送）"
+                            : "已有记录 id=" + recent.getNotificationId() + " sendTime=" + recent.getSendTime());
+            if (recent != null) {
+                log.warn("[Recognition] ⚠ 5min 内已发过 seat_conflict_warning → 跳出");
                 return record;
             }
 
-            // 3d. 发送异常占用提醒
+            // 3d. 发送通知
+            Seat seatInfo = seatMapper.findById(record.getSeatId());
+            String seatNumber = seatInfo != null ? seatInfo.getSeatNumber() : String.valueOf(record.getSeatId());
             notificationService.send(
                     reservation.getUserId(),
                     SystemConstants.NotificationType.SEAT_CONFLICT_WARNING,
-                    "检测到您的预约座位（ID：" + record.getSeatId() + "）可能被他人占用，请及时签到或确认");
+                    "您预约的 " + seatNumber + " 号座位可能被他人占用，请及时确认或尽快签到。");
+            log.info("[Recognition] ✅ seat_conflict_warning 已发送 → userId={}", reservation.getUserId());
         }
 
         return record;
@@ -128,4 +168,3 @@ public class RecognitionServiceImpl implements RecognitionService {
         return recognitionRecordMapper.findBySeatId(seatId);
     }
 }
-

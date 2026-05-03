@@ -3,8 +3,10 @@ package com.example.studyroom.service.impl;
 import com.example.studyroom.constant.SystemConstants;
 import com.example.studyroom.mapper.SeatMapper;
 import com.example.studyroom.mapper.SeatRegionMapper;
+import com.example.studyroom.mapper.StudyRoomMapper;
 import com.example.studyroom.po.Seat;
 import com.example.studyroom.po.SeatRegion;
+import com.example.studyroom.po.StudyRoom;
 import com.example.studyroom.service.SeatService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -23,6 +25,9 @@ public class SeatServiceImpl implements SeatService {
 
     @Autowired
     private SeatRegionMapper seatRegionMapper;
+
+    @Autowired
+    private StudyRoomMapper studyRoomMapper;
 
     @Override
     public List<Seat> getAllSeats() {
@@ -46,8 +51,20 @@ public class SeatServiceImpl implements SeatService {
     @Override
     @Transactional
     public Seat createSeat(Seat seat) {
+        StudyRoom room = studyRoomMapper.findById(seat.getRoomId());
+        if (room == null) {
+            throw new RuntimeException("关联的自习室不存在");
+        }
+        int currentCount = seatMapper.countByRoomId(seat.getRoomId());
+        if (currentCount >= room.getCapacity()) {
+            throw new RuntimeException("该自习室座位数已达到容量上限，无法继续添加座位");
+        }
+
         if (seat.getStatus() == null || seat.getStatus().isBlank()) {
             seat.setStatus(SystemConstants.SeatStatus.AVAILABLE);
+        }
+        if (seat.getCameraEnabled() == null) {
+            seat.setCameraEnabled(1); // 默认启用摄像头
         }
         seatMapper.insert(seat);
         return seat;
